@@ -20,22 +20,32 @@ import { WorkBook } from "./workbook";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const parse = <T = any[]>(mixed: unknown, options: Sheet2JSONOpts & ParsingOptions = {}) => {
   const { dateNF, header = 1, range, blankrows, defval, raw = true, rawNumbers, ...otherOptions } = options;
-  const workBook = isString(mixed)
-    ? readFile(mixed, { dateNF, raw, ...otherOptions })
-    : read(mixed, { dateNF, raw, ...otherOptions });
+
+  // Performance optimization: Enable dense mode and sheetStubs: false to skip empty cells
+  const parseOptions = { dateNF, raw, dense: true, sheetStubs: false, ...otherOptions };
+  const workBook = isString(mixed) ? readFile(mixed, parseOptions) : read(mixed, parseOptions);
+
   return Object.keys(workBook.Sheets).map((name) => {
     const sheet = workBook.Sheets[name]!;
+
+    // Get the actual data range to avoid parsing empty rows
+    const actualRange = typeof range === "function" ? range(sheet) : range || sheet["!ref"];
+
+    // Performance optimization: sheet_to_json with minimal overhead
+    // Set blankrows to false by default to skip empty rows
+    const jsonOptions = {
+      dateNF,
+      header,
+      range: actualRange,
+      blankrows: blankrows !== undefined ? blankrows : false,
+      defval,
+      raw,
+      rawNumbers,
+    };
+
     return {
       name,
-      data: utils.sheet_to_json<T>(sheet, {
-        dateNF,
-        header,
-        range: typeof range === "function" ? range(sheet) : range,
-        blankrows,
-        defval,
-        raw,
-        rawNumbers,
-      }),
+      data: utils.sheet_to_json<T>(sheet, jsonOptions),
     };
   });
 };
